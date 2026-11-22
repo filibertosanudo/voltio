@@ -1,0 +1,501 @@
+/*
+ * Motion for the pages customers see: the landing and the tracking page.
+ *
+ * Rules every animation here follows:
+ * - Pure CSS, no library and no script: the strict CSP stays 'self' and a
+ *   phone on a slow connection pays nothing for it.
+ * - Only `transform` and `opacity` (plus SVG stroke offsets), so nothing
+ *   triggers layout.
+ * - Every element looks right with no animation at all. The default styles
+ *   are the finished state; motion is added only inside
+ *   `prefers-reduced-motion: no-preference`, and scroll-linked motion only
+ *   where the browser supports scroll timelines.
+ * - Anything that loops can be paused: `[data-motion="paused"]` on <html>
+ *   (components/landing/motion-toggle.tsx) stops every `.v-loop`.
+ */
+
+:root {
+  --v-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---- keyframes ---------------------------------------------------------- */
+
+@keyframes v-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes v-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes v-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes v-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes v-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes v-ping {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+@keyframes v-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes v-float {
+  from {
+    transform: translateY(0) rotate(-3deg);
+  }
+  to {
+    transform: translateY(-12px) rotate(-3deg);
+  }
+}
+@keyframes v-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+@keyframes v-spark-travel {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+/* A short dash runs the length of a circuit trace, then rests. */
+@keyframes v-trace-pulse {
+  0% {
+    stroke-dashoffset: 8;
+    opacity: 1;
+  }
+  55% {
+    stroke-dashoffset: -100;
+    opacity: 1;
+  }
+  56%,
+  100% {
+    stroke-dashoffset: -100;
+    opacity: 0;
+  }
+}
+
+/* ---- the hero phone: one 16 s story in five 3.2 s slots ------------------
+ * slot 0 diagnosing · 1 quote ready · 2 approved · 3 in repair · 4 ready
+ * Labels and most cards share v-slot and are offset by --slot. The quote card
+ * spans two slots and has its own keyframes, as do the tap and the toast.
+ */
+@keyframes v-slot {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  2%,
+  18% {
+    opacity: 1;
+    transform: none;
+  }
+  20%,
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes v-quote-card {
+  0%,
+  19% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  21%,
+  58% {
+    opacity: 1;
+    transform: none;
+  }
+  61%,
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes v-quote-cta {
+  0%,
+  36% {
+    opacity: 1;
+    transform: none;
+  }
+  37.5% {
+    opacity: 1;
+    transform: scale(0.95);
+  }
+  39% {
+    opacity: 1;
+    transform: none;
+  }
+  40.5%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+@keyframes v-quote-done {
+  0%,
+  40% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  42%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes v-quote-check {
+  0%,
+  41% {
+    stroke-dashoffset: 100;
+  }
+  45%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes v-touch {
+  0%,
+  31% {
+    opacity: 0;
+    transform: translate(28px, 34px);
+  }
+  34.5% {
+    opacity: 0.9;
+    transform: none;
+  }
+  37.5% {
+    opacity: 0.9;
+    transform: scale(0.78);
+  }
+  39.5% {
+    opacity: 0.9;
+    transform: none;
+  }
+  42%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+@keyframes v-ripple {
+  0%,
+  37% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  37.5% {
+    opacity: 0.55;
+    transform: scale(0.2);
+  }
+  41%,
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+@keyframes v-marker {
+  0%,
+  18% {
+    transform: translateX(20%);
+  }
+  20%,
+  38% {
+    transform: translateX(40%);
+  }
+  40%,
+  78% {
+    transform: translateX(60%);
+  }
+  80%,
+  97% {
+    transform: translateX(80%);
+  }
+  100% {
+    transform: translateX(20%);
+  }
+}
+@keyframes v-progress {
+  0%,
+  18% {
+    transform: scaleX(0.2);
+  }
+  20%,
+  38% {
+    transform: scaleX(0.4);
+  }
+  40%,
+  78% {
+    transform: scaleX(0.6);
+  }
+  80%,
+  97% {
+    transform: scaleX(0.8);
+  }
+  100% {
+    transform: scaleX(0.2);
+  }
+}
+@keyframes v-toast {
+  0%,
+  80% {
+    opacity: 0;
+    transform: translateY(-120%);
+  }
+  82%,
+  96% {
+    opacity: 1;
+    transform: none;
+  }
+  98%,
+  100% {
+    opacity: 0;
+    transform: translateY(-120%);
+  }
+}
+
+/* ---- finished-state defaults (what reduced motion, and no support, see) -- */
+
+/* The phone rests on its most telling frame: a quote waiting for a "yes". */
+.v-phone-label,
+.v-phone-card,
+.v-phone-done,
+.v-phone-touch,
+.v-phone-ripple,
+.v-phone-toast {
+  opacity: 0;
+}
+.v-phone-label[data-slot="1"],
+.v-phone-card[data-card="quote"] {
+  opacity: 1;
+}
+.v-phone-marker {
+  transform: translateX(40%);
+}
+.v-phone-progress {
+  transform: scaleX(0.4);
+  transform-origin: left;
+}
+.v-phone {
+  transform: rotate(-3deg);
+}
+
+.v-trace-pulse {
+  opacity: 0;
+  stroke-dasharray: 8 200;
+}
+
+/* Without motion the brands simply wrap into centred lines. */
+.v-marquee-track,
+.v-marquee-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem 2.5rem;
+}
+.v-marquee-dup {
+  display: none;
+}
+
+.v-step-fill,
+.v-connector-fill {
+  transform-origin: left;
+}
+.v-line-fill {
+  transform-origin: top;
+}
+.v-ping {
+  opacity: 0;
+}
+
+/* ---- motion ------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* One-shot entrances on load, staggered with --d. */
+  .v-enter {
+    animation: v-rise 0.5s var(--v-ease-out) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .v-pop {
+    animation: v-pop 0.4s var(--v-ease-out) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .v-step-fill {
+    animation: v-grow-x 0.45s var(--v-ease-out) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .v-ping {
+    /* Three beats, then still: a pulse that never stops is noise. */
+    animation: v-ping 1.6s ease-out 3;
+    animation-delay: 0.7s;
+  }
+  .v-draw {
+    stroke-dasharray: 100;
+    animation: v-draw 0.55s var(--v-ease-out) both;
+    animation-delay: var(--d, 0ms);
+  }
+
+  /* Hero circuit: the traces draw in once, then carry the odd pulse. */
+  .v-trace {
+    stroke-dasharray: 100;
+    animation: v-draw 1.6s var(--v-ease-out) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .v-trace-pulse {
+    animation: v-trace-pulse var(--dur, 6s) linear infinite;
+    animation-delay: var(--d, 0ms);
+  }
+
+  /* Hero phone. */
+  .v-phone {
+    animation: v-float 3s ease-in-out infinite alternate;
+  }
+  /* `both`: during its first delay a slot shows its 0% frame (hidden),
+     not its resting default. */
+  .v-phone-label,
+  .v-phone-card[data-card="slot"] {
+    animation: v-slot 16s linear infinite both;
+    animation-delay: calc(var(--slot) * 3.2s);
+  }
+  .v-phone-card[data-card="quote"] {
+    animation: v-quote-card 16s linear infinite;
+  }
+  .v-phone-cta {
+    animation: v-quote-cta 16s linear infinite;
+  }
+  .v-phone-done {
+    animation: v-quote-done 16s linear infinite;
+  }
+  .v-phone-check {
+    stroke-dasharray: 100;
+    animation: v-quote-check 16s linear infinite;
+  }
+  .v-phone-touch {
+    animation: v-touch 16s linear infinite;
+  }
+  .v-phone-ripple {
+    animation: v-ripple 16s linear infinite;
+  }
+  .v-phone-marker {
+    animation: v-marker 16s var(--v-ease-out) infinite;
+  }
+  .v-phone-progress {
+    animation: v-progress 16s var(--v-ease-out) infinite;
+  }
+  .v-phone-toast {
+    animation: v-toast 16s linear infinite;
+  }
+  .v-shimmer {
+    animation: v-shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* Brand marquee: one row that loops; the copy makes the seam invisible. */
+  .v-marquee-track {
+    flex-wrap: nowrap;
+    gap: 0;
+    width: max-content;
+    animation: v-marquee 45s linear infinite;
+  }
+  .v-marquee-row {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    padding-right: 2.5rem;
+  }
+  .v-marquee-dup {
+    display: flex;
+  }
+  .v-marquee:hover .v-marquee-track,
+  .v-marquee:focus-within .v-marquee-track {
+    animation-play-state: paused;
+  }
+
+  :root[data-motion="paused"] .v-loop,
+  :root[data-motion="paused"] .v-loop * {
+    animation-play-state: paused !important;
+  }
+}
+
+/* Scroll-linked motion: tied to where the reader is, so it never plays to
+   an empty room. Browsers without scroll timelines get the static page. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .v-reveal {
+      animation: v-rise linear both;
+      animation-duration: auto;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
+    }
+    .v-connector-fill {
+      animation: v-grow-x linear both;
+      animation-duration: auto;
+      animation-timeline: view();
+      animation-range: entry 40% cover 55%;
+    }
+    .v-steps {
+      view-timeline-name: --v-steps;
+    }
+    .v-line-fill {
+      animation: v-grow-y linear both;
+      animation-duration: auto;
+      animation-timeline: --v-steps;
+      animation-range: entry 30% exit 40%;
+    }
+    .v-spark {
+      animation: v-spark-travel linear both;
+      animation-duration: auto;
+      animation-timeline: --v-steps;
+      animation-range: entry 30% exit 40%;
+    }
+  }
+}
