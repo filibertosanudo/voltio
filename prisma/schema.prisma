@@ -1,0 +1,420 @@
+// ============================================================================
+//  Voltio: repair shop management. Prisma schema.
+//
+//  Conventions (docs/DATABASE.md explains each one):
+//
+//  1) One deployment is one shop. `Business` is a singleton row, enforced by a
+//     CHECK constraint, not a tenant key repeated on every table.
+//  2) Money is an integer number of cents. Never Float, and no Decimal to
+//     convert at the server/client boundary.
+//  3) Every state machine is an enum: changing one takes a migration.
+//  4) Orders, quotes, payments and events are never deleted. An order is
+//     cancelled; a quote is superseded; a payment is refunded with a new row.
+//  5) `OrderEvent` is append-only, enforced by a trigger: it is the record of
+//     who approved what, and when.
+//  6) Public capability tokens use cuid(2), never cuid(): CUID v1 is
+//     timestamp-prefixed and two rows created together differ by a few bits.
+//  7) Rules Prisma cannot express (CHECKs, partial unique indexes, the
+//     append-only trigger) live in the hand-written migration
+//     `add_integrity_rules`, and each is named in a comment on its model.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  FRONT_DESK
+  TECHNICIAN
+}
+
+enum DeviceKind {
+  PHONE
+  TABLET
+  LAPTOP
+  DESKTOP
+  CONSOLE
+  WEARABLE
+  OTHER
+}
+
+enum OrderStatus {
+  RECEIVED
+  DIAGNOSING
+  AWAITING_APPROVAL
+  APPROVED
+  IN_REPAIR
+  WAITING_PARTS
+  QUOTE_REJECTED
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum QuoteItemKind {
+  LABOR
+  PART
+  OTHER
+}
+
+/// How a quote decision reached the shop. CUSTOMER_LINK is the customer
+/// themselves on the tracking page; the other two are staff recording what
+/// the customer said at the counter or on the phone.
+enum DecisionChannel {
+  CUSTOMER_LINK
+  IN_PERSON
+  PHONE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+enum PaymentKind {
+  PAYMENT
+  REFUND
+}
+
+enum OrderEventType {
+  CREATED
+  STATUS_CHANGED
+  NOTE
+  QUOTE_SENT
+  QUOTE_WITHDRAWN
+  QUOTE_APPROVED
+  QUOTE_REJECTED
+  PAYMENT_RECORDED
+  PHOTO_ADDED
+}
+
+enum NotificationTemplate {
+  ORDER_RECEIVED
+  QUOTE_READY
+  WAITING_PARTS
+  READY_FOR_PICKUP
+  DELIVERED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+/// The shop itself. Exactly one row, id "main" (CHECK "Business_singleton").
+model Business {
+  id                  String   @id @default("main")
+  name                String
+  tagline             String   @default("")
+  phone               String   @default("")
+  /// Digits only, with country code: what wa.me links take.
+  whatsapp            String   @default("")
+  email               String   @default("")
+  address             String   @default("")
+  city                String   @default("")
+  /// IANA name. Every folio day and every displayed date resolves against it.
+  timezone            String   @default("America/Mexico_City")
+  currency            String   @default("MXN")
+  /// Basis points: 1600 is 16%.
+  taxRateBps          Int      @default(1600)
+  defaultWarrantyDays Int      @default(90)
+  folioPrefix         String   @default("VT")
+  /// Weekly opening hours, validated by lib/settings/hours.ts.
+  hours               Json     @default("[]")
+  /// Printed on the intake receipt.
+  terms               String   @default("")
+  updatedAt           DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  /// A deactivated account keeps its history; it just cannot sign in, and a
+  /// live session ends at its next revalidation (auth.ts).
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedOrders Order[]      @relation("OrderAssignee")
+  createdOrders  Order[]      @relation("OrderCreator")
+  events         OrderEvent[]
+  payments       Payment[]
+  photos         OrderPhoto[]
+  quoteDecisions Quote[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  /// Normalized to digits (lib/customers/phone.ts). The natural key at the
+  /// counter: it is how a returning customer is found.
+  phone     String   @unique
+  email     String?
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  devices Device[]
+  orders  Order[]
+
+  @@index([name])
+}
+
+model Device {
+  id         String     @id @default(cuid())
+  customerId String
+  kind       DeviceKind
+  brand      String
+  model      String
+  /// IMEI or serial number. Not unique: devices change hands. It is what
+  /// ties a returning device to its history and its warranty.
+  serial     String?
+  color      String     @default("")
+  createdAt  DateTime   @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  orders   Order[]
+
+  @@index([customerId])
+  @@index([serial])
+}
+
+/// One atomic counter per local day: folios read VT-261115-007. Incremented
+/// with INSERT ... ON CONFLICT DO UPDATE (lib/orders/folio.ts), so two
+/// simultaneous intakes cannot share a number.
+model FolioCounter {
+  day  DateTime @id @db.Date
+  last Int
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  folio       String      @unique
+  /// The capability behind the tracking link. cuid(2): see the header.
+  publicToken String      @unique @default(cuid(2))
+  customerId  String
+  deviceId    String
+  status      OrderStatus @default(RECEIVED)
+
+  reportedIssue   String
+  /// Scratches, cracks, missing screws: what the device looked like when it
+  /// arrived, written down before anyone opens it.
+  intakeCondition String @default("")
+  accessories     String @default("")
+  diagnosis       String @default("")
+
+  assignedToId String?
+  createdById  String
+  promisedAt   DateTime?
+
+  receivedAt  DateTime  @default(now())
+  readyAt     DateTime?
+  deliveredAt DateTime?
+  cancelledAt DateTime?
+
+  /// Frozen at delivery from Business.defaultWarrantyDays, so changing the
+  /// shop's policy later does not rewrite a warranty already given.
+  warrantyUntil DateTime?
+  /// Set at intake when the same device comes back inside its warranty.
+  warrantyOfId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  device         Device         @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  assignedTo     User?          @relation("OrderAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy      User           @relation("OrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  warrantyOf     Order?         @relation("WarrantyClaim", fields: [warrantyOfId], references: [id], onDelete: SetNull)
+  warrantyClaims Order[]        @relation("WarrantyClaim")
+  quotes         Quote[]
+  events         OrderEvent[]
+  payments       Payment[]
+  photos         OrderPhoto[]
+  notifications  Notification[]
+
+  @@index([status, receivedAt])
+  @@index([customerId])
+  @@index([deviceId])
+  @@index([assignedToId, status])
+}
+
+/// A priced proposal the customer accepts or declines. Totals are frozen
+/// when it is sent: what the customer approved is what is charged.
+///
+/// Partial unique indexes (migration add_integrity_rules):
+///   "Quote_one_live_per_order":  one quote in SENT or APPROVED per order
+///   "Quote_one_draft_per_order": one DRAFT per order
+/// so "the quote the customer is looking at" always names a single row.
+model Quote {
+  id            String      @id @default(cuid())
+  orderId       String
+  version       Int
+  status        QuoteStatus @default(DRAFT)
+  notes         String      @default("")
+  taxRateBps    Int
+  subtotalCents Int
+  taxCents      Int
+  totalCents    Int
+  sentAt        DateTime?
+
+  decidedAt         DateTime?
+  decidedVia        DecisionChannel?
+  /// The staff member who recorded the decision; null when the customer
+  /// decided on the tracking page.
+  decidedById       String?
+  decisionIp        String?
+  decisionUserAgent String?
+  rejectionReason   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  decidedBy User?       @relation(fields: [decidedById], references: [id], onDelete: SetNull)
+  items     QuoteItem[]
+
+  @@unique([orderId, version])
+}
+
+model QuoteItem {
+  id             String        @id @default(cuid())
+  quoteId        String
+  kind           QuoteItemKind
+  description    String
+  quantity       Int
+  unitPriceCents Int
+  position       Int
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+}
+
+/// Money in or out at the counter. A refund is its own row with a positive
+/// amount (CHECK "Payment_amount_positive"); nothing is ever edited.
+model Payment {
+  id           String        @id @default(cuid())
+  orderId      String
+  kind         PaymentKind   @default(PAYMENT)
+  method       PaymentMethod
+  amountCents  Int
+  note         String        @default("")
+  receivedById String
+  createdAt    DateTime      @default(now())
+
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  receivedBy User  @relation(fields: [receivedById], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+/// The order's history. Append-only: the trigger "OrderEvent_append_only"
+/// rejects UPDATE and DELETE, for every role including the table owner.
+model OrderEvent {
+  id         String         @id @default(cuid())
+  orderId    String
+  type       OrderEventType
+  fromStatus OrderStatus?
+  toStatus   OrderStatus?
+  message    String         @default("")
+  /// Shown on the customer's tracking page. Internal notes stay false.
+  isPublic   Boolean        @default(false)
+  /// null: the customer (through their link) or the system.
+  actorId    String?
+  createdAt  DateTime       @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  // Restrict, not SetNull: clearing the actor would be an UPDATE, which the
+  // append-only trigger rejects. Staff are deactivated, never deleted.
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+}
+
+model OrderPhoto {
+  id           String   @id @default(cuid())
+  orderId      String
+  /// Opaque key inside the storage driver; never a path taken from a client.
+  storageKey   String   @unique
+  /// From the file's own magic bytes, not from what the browser claimed.
+  contentType  String
+  sizeBytes    Int
+  caption      String   @default("")
+  isPublic     Boolean  @default(false)
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  uploadedBy User  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+}
+
+/// Transactional outbox. A row is written in the same transaction as the
+/// change it announces, so there is no "status changed but the email was
+/// never queued". scripts/worker.ts claims rows with FOR UPDATE SKIP LOCKED.
+model Notification {
+  id            String               @id @default(cuid())
+  orderId       String?
+  template      NotificationTemplate
+  toEmail       String
+  /// Everything the template needs, captured when the event happened.
+  payload       Json
+  status        NotificationStatus   @default(PENDING)
+  attempts      Int                  @default(0)
+  nextAttemptAt DateTime             @default(now())
+  /// A claimed row is invisible to other workers until this passes, which is
+  /// also what releases it if the worker that claimed it dies.
+  lockedUntil   DateTime?
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime             @default(now())
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+}
+
+/// What the landing page lists under "services". Not a price list the
+/// quotes are bound to: a repair is priced after a diagnosis.
+model Service {
+  id             String  @id @default(cuid())
+  name           String
+  description    String  @default("")
+  fromPriceCents Int?
+  turnaround     String  @default("")
+  position       Int     @default(0)
+  active         Boolean @default(true)
+}
+
+/// Fixed-window counters for the public lookup, quote decisions and sign-in.
+model RateLimitHit {
+  scope       String
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@id([scope, key, windowStart])
+  @@index([windowStart])
+}
