@@ -1,0 +1,123 @@
+name: voltio
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: voltio
+      POSTGRES_USER: voltio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 5435 on the host, not 5432: a development machine usually has its own
+    # Postgres there. Only for tools on the host (the test suite, psql); the
+    # other services reach `db` over the internal network.
+    ports:
+      - "${DB_PORT:-5435}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voltio"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # A fake SMTP server with an inbox at http://localhost:8026, so every
+  # email the system sends can be read during development. In production
+  # the SMTP_* variables point at a real server and this service is removed.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "${MAIL_UI_PORT:-8026}:8025"
+
+  # One-shot: applies the migrations and exits. `app` and `worker` do not
+  # start until it has succeeded.
+  migrate:
+    image: voltio-migrate:local
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://voltio:${POSTGRES_PASSWORD}@db:5432/voltio
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Demo data. Behind a profile so a plain `up` never starts it:
+  #   docker compose run --rm seed            (first time)
+  #   docker compose run --rm seed npm run db:seed -- --reset
+  seed:
+    image: voltio-seed:local
+    profiles: ["tools"]
+    build:
+      context: .
+      target: seed
+    environment:
+      DATABASE_URL: postgresql://voltio:${POSTGRES_PASSWORD}@db:5432/voltio
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3100}
+      # prisma/seed.ts refuses a host it cannot prove is local, and "db" is
+      # this service's name in a real deployment too. This is the explicit
+      # confirmation for a demo or CI database; remove it for a real shop.
+      SEED_CONFIRM: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    image: voltio-app:local
+    build:
+      context: .
+      target: runner
+    environment:
+      DATABASE_URL: postgresql://voltio:${POSTGRES_PASSWORD}@db:5432/voltio
+      AUTH_SECRET: ${AUTH_SECRET}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3100}
+      TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-1}
+      STORAGE_LOCAL_DIR: /data/media
+      DEMO_MODE: ${DEMO_MODE:-0}
+    volumes:
+      - media:/data/media
+    ports:
+      - "${APP_PORT:-3100}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Sends the queued emails. It holds no AUTH_SECRET: it never authenticates
+  # anyone, so it should not hold the key that signs every session.
+  worker:
+    image: voltio-worker:local
+    build:
+      context: .
+      target: worker
+    environment:
+      DATABASE_URL: postgresql://voltio:${POSTGRES_PASSWORD}@db:5432/voltio
+      DATABASE_POOL_MAX: "3"
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3100}
+      MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL:-avisos@voltio.local}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-0}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mailhog:
+        condition: service_started
+
+volumes:
+  pgdata:
+  media:
