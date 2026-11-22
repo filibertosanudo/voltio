@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    /* Anchor jumps land below the landing's floating navigation. */
+    scroll-padding-top: 5.5rem;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+  ::selection {
+    @apply bg-volt text-ink;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2
+      active:translate-y-px disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-volt text-ink hover:bg-volt-deep;
+  }
+  .btn-dark {
+    @apply bg-ink text-white hover:bg-ink-700;
+  }
+  .btn-ghost {
+    @apply border border-line bg-white text-ink hover:bg-paper;
+  }
+  .btn-danger {
+    @apply border border-rose-200 bg-white text-rose-700 hover:bg-rose-50;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted/60
+      focus:border-ink focus:outline-none focus:ring-2 focus:ring-volt;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+  .card {
+    @apply rounded-xl border border-line bg-white shadow-card;
+  }
+  .eyebrow {
+    @apply font-mono text-xs font-medium uppercase tracking-[0.18em];
+  }
+  /* The faint grid behind the dark sections: a workbench mat. */
+  .bench-grid {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
