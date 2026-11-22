@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # No database: types, lint and the pure-function tests.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:unit
+
+  # Against a real Postgres: the suite leans on row locks, partial unique
+  # indexes and a trigger, which only behave like production in one.
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: voltio
+          POSTGRES_PASSWORD: voltio
+          POSTGRES_DB: voltio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U voltio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://voltio:voltio@localhost:5432/voltio
+      AUTH_SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - run: npx prisma generate
+      # Both projects with coverage: the thresholds in vitest.config.mts only
+      # mean something if a step enforces them.
+      - run: npm run test:coverage
+
+  # The production image must build with no database and no secrets.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # The same validation as the local hook, for a clone that never enabled it.
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate every commit message of the pull request
+        run: |
+          status=0
+          for sha in $(git rev-list ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}); do
+            git log -1 --format=%B "$sha" > /tmp/commit-msg
+            sh scripts/validate-commit-msg.sh /tmp/commit-msg || status=1
+          done
+          exit $status

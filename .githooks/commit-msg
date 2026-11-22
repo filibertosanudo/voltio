@@ -1,0 +1,7 @@
+#!/bin/sh
+# Enable once per clone: git config core.hooksPath .githooks
+# The actual validation lives in scripts/validate-commit-msg.sh, shared
+# with the CI "commits" job so the rules never drift between the two.
+
+ROOT=$(git rev-parse --show-toplevel)
+exec "$ROOT/scripts/validate-commit-msg.sh" "$1"
