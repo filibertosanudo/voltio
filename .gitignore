@@ -1,0 +1,32 @@
+# dependencies
+node_modules
+
+# next.js
+.next
+out
+next-env.d.ts
+
+# build output
+dist
+build
+coverage
+
+# generated Prisma client (regenerated via `npm run db:generate`)
+lib/generated/
+
+# uploaded photos (local storage driver)
+data/
+
+# misc
+*.log
+.env
+.env*.local
+.DS_Store
+*.tsbuildinfo
+
+# tooling that is not part of the shipped app
+.agents/
+.claude/
+
+# Graphify output and cache (regenerated with `graphify`)
+graphify-out/
