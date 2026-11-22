@@ -15,6 +15,26 @@ piece: the second system of a series by line of business, after
 
 > **En español:** ver el [resumen al final](#resumen-en-español).
 
+<p align="center">
+  <img src="docs/screenshots/landing.jpg" alt="The shop's public website, with a phone playing a repair from diagnosis to pickup" width="49%">
+  <img src="docs/screenshots/order-detail.jpg" alt="An order in the staff panel: intake, diagnosis, next step and payments" width="49%">
+  <img src="docs/screenshots/tracking-phone.jpg" alt="The customer's tracking page on a phone, with the quote and the approve button" width="24%">
+  <img src="docs/screenshots/approved-phone.jpg" alt="The same page right after the customer approves the quote" width="24%">
+  <img src="docs/screenshots/dashboard.jpg" alt="The owner's dashboard" width="49%">
+</p>
+
+<details>
+<summary>More screens</summary>
+<p align="center">
+  <img src="docs/screenshots/orders.jpg" alt="The order list with status filters and search" width="49%">
+  <img src="docs/screenshots/receipt.jpg" alt="The printable intake receipt with its tracking QR code" width="49%">
+  <img src="docs/screenshots/transparency.jpg" alt="The landing's transparency section, with the floating navigation" width="70%">
+</p>
+
+The demo data is fourteen orders in every state of a repair (`prisma/seed.ts`),
+built by calling the same functions the panel uses.
+</details>
+
 ## The problem
 
 A small repair shop runs on paper tickets and phone calls. Three things go
