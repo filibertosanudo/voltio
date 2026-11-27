@@ -11,7 +11,8 @@ name, hours, services and terms set from the panel.
 
 Built by [Filiberto Sañudo](https://github.com/filibertosanudo) as a portfolio
 piece: the second system of a series by line of business, after
-[Marea](https://github.com/filibertosanudo/marea-restaurant) (restaurants).
+[Sobremesa](https://github.com/filibertosanudo/marea-restaurant), for
+restaurants, shown through its sample client Marea.
 
 > **En español:** ver el [resumen al final](#resumen-en-español).
 

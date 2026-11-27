@@ -12,6 +12,8 @@
  * and refuses to run twice unless told to start over (--reset).
  */
 import "dotenv/config";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 import { hashPassword } from "@/lib/auth/password";
 import type { UserRole } from "@/lib/generated/prisma/enums";
@@ -19,6 +21,7 @@ import { createOrder, type CreateOrderInput } from "@/lib/orders/create-order";
 import type { Actor } from "@/lib/orders/lock";
 import { addNote, transitionOrder } from "@/lib/orders/transition";
 import { recordPayment } from "@/lib/payments/record-payment";
+import { addPhoto } from "@/lib/photos/photo-service";
 import { prisma } from "@/lib/prisma";
 import { decideQuote, saveQuoteDraft, sendQuote, type QuoteItemInput } from "@/lib/quotes/quote-service";
 
@@ -84,7 +87,16 @@ type Scenario = {
     | "CANCELLED";
   decidedVia?: "link" | "IN_PERSON" | "PHONE";
   depositPesos?: number;
+  /**
+   * Taken atHours after intake, from prisma/seed-photos/ (free-license
+   * photos, listed in that folder's README). Uploaded through addPhoto, the
+   * same path the panel uses, so they are typed by their bytes and stored
+   * like any other.
+   */
+  photos?: { file: string; caption: string; isPublic: boolean; atHours: number }[];
 };
+
+const SEED_PHOTOS = path.join(process.cwd(), "prisma", "seed-photos");
 
 const customer = (name: string, phone: string, email: string | null = null) => ({ name, phone: `52${phone}`, email });
 const device = (kind: CreateOrderInput["device"]["kind"], brand: string, model: string, serial: string | null, color = "") => ({
@@ -105,6 +117,7 @@ const SCENARIOS: Scenario[] = [
       intakeCondition: "Pantalla estrellada en la esquina inferior izquierda. Marco con rayones leves.",
       accessories: "Funda transparente",
     },
+    photos: [{ file: "pantalla-estrellada", caption: "Así llegó: pantalla estrellada", isPublic: true, atHours: 0.25 }],
     diagnosis: "El panel OLED está roto y el digitalizador no responde. La tarjeta, la batería y las cámaras funcionan bien.",
     items: [part("Pantalla OLED original Samsung Galaxy S23", 3200), labor("Cambio de pantalla y sellado", 450)],
     quoteNote: "La pantalla es original y conserva la resistencia al agua.",
@@ -148,6 +161,7 @@ const SCENARIOS: Scenario[] = [
       intakeCondition: "Puerto HDMI visiblemente doblado.",
       accessories: "Cable HDMI y cable de corriente",
     },
+    photos: [{ file: "consola", caption: "La consola al recibirla", isPublic: true, atHours: 0.25 }],
     diagnosis: "Puerto HDMI con pines doblados y pistas levantadas. Requiere reemplazo del puerto y reconstrucción de dos pistas.",
     items: [part("Puerto HDMI PS5", 420), labor("Microsoldadura y reconstrucción de pistas", 1400)],
     quoteNote: "Incluye prueba de 2 horas de uso continuo.",
@@ -163,6 +177,7 @@ const SCENARIOS: Scenario[] = [
       intakeCondition: "Golpe en una esquina. Cristal intacto.",
       accessories: "Funda con teclado",
     },
+    photos: [{ file: "tablet", caption: "Así llegó: golpe en una esquina, cristal intacto", isPublic: true, atHours: 0.25 }],
     diagnosis: "Conector Lightning con pines sulfatados. Carga con normalidad con un conector de prueba.",
     items: [part("Flex de carga iPad 9", 520), labor("Cambio de centro de carga", 480)],
     until: "READY",
@@ -178,6 +193,7 @@ const SCENARIOS: Scenario[] = [
       intakeCondition: "Restos de líquido bajo el teclado. Olor a quemado leve.",
       accessories: "Cargador",
     },
+    photos: [{ file: "teclado-laptop", caption: "Teclado con restos de café", isPublic: true, atHours: 0.25 }],
     diagnosis: "Teclado en corto por líquido. La tarjeta madre no presenta daño tras la limpieza con ultrasonido.",
     items: [part("Teclado HP Pavilion 15 en español", 950), labor("Limpieza por derrame y cambio de teclado", 700)],
     quoteNote: "El teclado es bajo pedido: tarda de 3 a 5 días hábiles en llegar.",
@@ -224,6 +240,7 @@ const SCENARIOS: Scenario[] = [
       intakeCondition: "Cristal trasero estrellado. Pantalla sin fisuras visibles.",
       accessories: "Funda",
     },
+    photos: [{ file: "iphone", caption: "Revisión del módulo de pantalla", isPublic: true, atHours: 3 }],
     diagnosis: "El panel OLED tiene daño interno por impacto. Face ID y cámaras funcionan correctamente.",
     items: [part("Pantalla OLED iPhone 14", 4300), labor("Cambio de pantalla y calibración", 500)],
     quoteNote: "El cristal trasero se cotiza por separado si lo quieres cambiar.",
@@ -239,6 +256,7 @@ const SCENARIOS: Scenario[] = [
       intakeCondition: "Mucho polvo en ventiladores. Panel lateral con un rayón.",
       accessories: "Solo el gabinete",
     },
+    photos: [{ file: "laptop-abierta", caption: "Equipo abierto para la prueba de memoria", isPublic: true, atHours: 3 }],
     diagnosis: "Un módulo de RAM falla la prueba de memoria. Fuente y disco en buen estado.",
     items: [part("Memoria RAM DDR4 16 GB 3200 MHz", 890), labor("Diagnóstico, limpieza y pruebas de estabilidad", 400)],
     until: "AWAITING_APPROVAL",
@@ -302,6 +320,11 @@ async function play(scenario: Scenario, team: { desk: Actor; tech: Actor; owner:
     desk,
     ago(day)
   );
+  for (const photo of scenario.photos ?? []) {
+    const bytes = new Uint8Array(await readFile(path.join(SEED_PHOTOS, `${photo.file}.jpg`)));
+    await addPhoto({ orderId: order.id, bytes, caption: photo.caption, isPublic: photo.isPublic }, desk, undefined, ago(day, photo.atHours));
+  }
+
   const move = (to: Parameters<typeof transitionOrder>[0]["to"], at: Date, by: Actor, note = "") =>
     transitionOrder({ orderId: order.id, to, note }, by, at);
 
