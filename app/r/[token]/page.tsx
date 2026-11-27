@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AutoRefresh } from "@/components/track/auto-refresh";
+import { ApproveBar } from "@/components/track/approve-bar";
 import { DecisionForm } from "@/components/track/decision-form";
 import { ChatIcon, CheckIcon, PhoneIcon, ShieldIcon } from "@/components/ui/icons";
 import { Photo } from "@/components/ui/photo";
@@ -31,13 +32,14 @@ export default async function TrackPage({ params }: { params: Promise<{ token: s
   const delay = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
   const meta = STATUS_META[order.status];
   const step = publicStepIndex(order.status);
+  const awaitingDecision = order.quote?.status === "SENT" && order.status === "AWAITING_APPROVAL";
   const phone = normalizePhone(business.phone);
   const whatsappHref = business.whatsapp
     ? `https://wa.me/${business.whatsapp}?text=${encodeURIComponent(`Hola, escribo por mi orden ${order.folio}.`)}`
     : null;
 
   return (
-    <div className="min-h-screen pb-16">
+    <div className={`min-h-screen ${awaitingDecision ? "pb-32 md:pb-16" : "pb-16"}`}>
       {!isTerminal(order.status) && <AutoRefresh />}
 
       <header className="bench-grid bg-ink text-white">
@@ -187,8 +189,8 @@ export default async function TrackPage({ params }: { params: Promise<{ token: s
             </dl>
             {order.quote.notes && <p className="border-t border-line px-5 py-4 text-sm text-muted">{order.quote.notes}</p>}
 
-            {order.quote.status === "SENT" && order.status === "AWAITING_APPROVAL" && (
-              <div className="border-t border-line bg-volt-soft/50 px-5 py-5">
+            {awaitingDecision && (
+              <div id="decidir" className="scroll-mt-4 border-t border-line bg-volt-soft/50 px-5 py-5">
                 <DecisionForm token={token} quoteId={order.quote.id} total={money(order.quote.totalCents)} />
               </div>
             )}
@@ -280,6 +282,8 @@ export default async function TrackPage({ params }: { params: Promise<{ token: s
           {business.address && <p className="mt-4 text-muted">{[business.address, business.city].filter(Boolean).join(", ")}</p>}
         </section>
       </main>
+
+      {awaitingDecision && order.quote && <ApproveBar targetId="decidir" total={money(order.quote.totalCents)} />}
     </div>
   );
 }
