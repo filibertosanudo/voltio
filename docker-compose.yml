@@ -57,6 +57,10 @@ services:
       # this service's name in a real deployment too. This is the explicit
       # confirmation for a demo or CI database; remove it for a real shop.
       SEED_CONFIRM: "1"
+      # The demo orders' photos land where the app reads them.
+      STORAGE_LOCAL_DIR: /data/media
+    volumes:
+      - media:/data/media
     depends_on:
       db:
         condition: service_healthy
