@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CustomerLookup } from "@/components/admin/customer-lookup";
 import { ActionForm, Field, SubmitButton } from "@/components/ui/form";
 import { Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { COUNTER_ROLES, requirePageRole } from "@/lib/auth/guards";
@@ -35,26 +36,14 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
       <ActionForm action={createOrderAction} className="space-y-6">
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
-            <CardHeader title="Cliente" description="Si el teléfono ya existe, la orden se liga a ese cliente." />
-            <div className="grid gap-4 p-5 sm:grid-cols-2">
-              <Field label="Nombre completo" name="customerName" className="sm:col-span-2">
-                <input id="customerName" name="customerName" className="input" defaultValue={customer?.name} autoComplete="off" required />
-              </Field>
-              <Field label="Teléfono" name="phone" hint="10 dígitos. Es como lo buscamos después.">
-                <input
-                  id="phone"
-                  name="phone"
-                  className="input"
-                  inputMode="tel"
-                  defaultValue={customer ? formatPhone(customer.phone) : undefined}
-                  autoComplete="off"
-                  required
-                />
-              </Field>
-              <Field label="Correo (opcional)" name="email" hint="Para avisarle de cada cambio.">
-                <input id="email" name="email" type="email" className="input" defaultValue={customer?.email ?? undefined} autoComplete="off" />
-              </Field>
-            </div>
+            <CardHeader title="Cliente" description="Empieza por el teléfono: si ya es cliente, se liga a su historial." />
+            <CustomerLookup
+              initial={{
+                name: customer?.name,
+                phone: customer ? formatPhone(customer.phone) : undefined,
+                email: customer?.email ?? undefined,
+              }}
+            />
           </Card>
 
           <Card>

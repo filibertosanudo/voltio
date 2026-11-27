@@ -52,3 +52,24 @@ export async function getCustomer(id: string) {
     },
   });
 }
+
+/**
+ * The customer a phone number belongs to, for the intake form: what is on
+ * file and the devices they brought before, most recent first. Null when
+ * the number is new.
+ */
+export async function findCustomerByPhone(phone: string) {
+  return prisma.customer.findUnique({
+    where: { phone },
+    select: {
+      name: true,
+      email: true,
+      _count: { select: { orders: true } },
+      devices: {
+        orderBy: { createdAt: "desc" },
+        take: 6,
+        select: { id: true, kind: true, brand: true, model: true, serial: true, color: true },
+      },
+    },
+  });
+}
